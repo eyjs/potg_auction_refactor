@@ -201,19 +201,52 @@ export const useAuctionStore = defineStore('auction', {
     /* ----- 입찰 ----- */
     masterBid(teamId, inc) {
       const st = this.auctionState;
-      if (!st.isAuctionRunning || st.isAuctionPaused || st.timer <= 0) return;
+      if (
+        !this.currentUser || // 로그인 확인
+        this.currentUser.role !== 'master' || // 권한 확인
+        !st.isAuctionRunning ||
+        st.isAuctionPaused ||
+        st.timer <= 0
+      ) {
+        alert('유효하지 않은 요청입니다.');
+        return;
+      }
 
+      /* ── 입찰 팀 & 잔여 한도 확인 ─────────────────── */
       const team = this.teams.find((t) => t.id === teamId);
-      if (!team || team.itemsWon.length >= MAX_TEAM_ITEMS) return;
+      if (!team) return;
+      team.itemsWon = team.itemsWon || []; // 안전 가드
+      if (team.itemsWon.length >= MAX_TEAM_ITEMS) {
+        alert(`${team.name} 팀은 이미 최대 매물을 보유하고 있습니다!`);
+        return;
+      }
 
+      /* ── 새 입찰가 계산 & 포인트 검사 ─────────────── */
       const newBid = st.currentBid + inc;
-      if (team.points < newBid) return;
 
-      st.currentBid = newBid;
-      st.currentBidderTeamId = team.id;
-      st.currentAuctionStartTime = Date.now();
+      if (team.points < newBid) {
+        alert(`${team.name}팀의 포인트가 부족합니다.`);
+        return;
+      }
 
-      // 막판 연장
+      Object.assign(st, {
+        currentBid: newBid,
+        currentBidderTeamId: team.id,
+        currentAuctionStartTime: Date.now(),
+      });
+
+      /* 상대 팀 모두 입찰 불가? → 즉시 낙찰 */
+      const noMoreBids = this.teams
+        .filter((t) => t.id !== teamId && (t.itemsWon || []).length < MAX_TEAM_ITEMS)
+        .every((t) => t.points <= newBid);
+
+      if (noMoreBids) {
+        st.timer = 0;
+        this.handleRoundEnd();
+        this.saveData();
+        return;
+      }
+
       if (st.timer <= 10) this.addExtraTime();
       this.saveData();
     },
@@ -224,23 +257,18 @@ export const useAuctionStore = defineStore('auction', {
       if (!item) return;
 
       const { currentBid, currentBidderTeamId } = this.auctionState;
+      let winnerTeam = null;
+
       if (currentBid > 0 && currentBidderTeamId) {
-        const team = this.teams.find((t) => t.id === currentBidderTeamId);
-        if (team && team.itemsWon.length < MAX_TEAM_ITEMS) {
-          // 낙찰
+        winnerTeam = this.teams.find((t) => t.id === currentBidderTeamId);
+        if (winnerTeam && winnerTeam.itemsWon.length < MAX_TEAM_ITEMS) {
+          winnerTeam.points -= currentBid;
+          winnerTeam.itemsWon.push(item.id);
           Object.assign(item, {
             status: 'sold',
             bidPrice: currentBid,
-            bidderTeamId: team.id,
+            bidderTeamId: winnerTeam.id,
           });
-          team.points -= currentBid;
-          team.itemsWon.push(item.id);
-
-          // 참가자면 팀 배정
-          if (item.participantId) {
-            const user = this.users.find((u) => u.id === item.participantId);
-            if (user) user.teamId = team.id;
-          }
         } else {
           item.status = 'unsold';
         }
@@ -248,6 +276,9 @@ export const useAuctionStore = defineStore('auction', {
         item.status = 'unsold';
       }
 
+      this.auctionState.isAuctionPaused = true;
+      this.auctionState.currentBid = 0;
+      this.auctionState.currentBidderTeamId = null;
       this.saveData();
     },
   },

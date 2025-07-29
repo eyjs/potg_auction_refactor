@@ -188,7 +188,8 @@ function startAuction() {
 function nextItem() {
   store.$patch((s) => {
     s.auctionState.isAuctionPaused = false;
-  }); /* 로직은 기존 함수 호출 */
+    store.nextItem();
+  });
 }
 function addTime() {
   if (store.auctionState.isAuctionRunning && !store.auctionState.isAuctionPaused) store.auctionState.timer += 10;
@@ -202,7 +203,9 @@ function endAuction() {
   setMasterMsg('경매 종료', 'orange');
 }
 function masterBid(teamId, inc) {
-  /* 기존 masterBid 로직 그대로 호출 */ store.masterBid(teamId, inc);
+  // 1. 로직 처리
+  store.masterBid(teamId, inc);
+  // 2. 팀카드 강조효과 처리
 }
 
 function logout() {

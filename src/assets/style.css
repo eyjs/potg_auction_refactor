@@ -22,7 +22,7 @@ body {
   font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
   margin: 0;
   padding: 0;
-  background-color: var(--primary-bg);
+  /*background-color: var(--primary-bg);*/
   background: url('./bg3.png') no-repeat center center fixed;
   background-size: cover;
   display: flex;
